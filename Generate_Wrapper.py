@@ -1,233 +1,203 @@
-import os.path;
-import sys;
+import os
+import re
+import shutil
 import subprocess as sub
-import re;
-import shutil;
-import time;
+import sys
+import time
 
 # Info
-print ('Wrapper Generator. Copyright (C) Lin Min\n\n');
+print('Wrapper Generator. Copyright © Lin Min (Modified by Mobile46)')
 
+# Check args
+if len(sys.argv) < 2:
+    print('You should pass a dll file to this program!')
+    sys.exit(1)
+    
 # Get the input parameter first.
-dllname = sys.argv[1];
+dllPath = os.path.realpath(sys.argv[1])
+dllName = os.path.basename(dllPath)
 
 # Check whether is a dll file.
-if not dllname.endswith('.dll'):
-	print ('You should pass a dll file to this program!');
-	sys.exit(1);
+if not dllName.endswith('.dll'):
+    print('You should pass a dll file to this program!')
+    sys.exit(1)
 
 # Check whether the dll file specified exists.
-if os.path.exists(dllname):
-	print ('#############################')
-	print ('Reading dll file ...');
+if os.path.exists(dllPath):
+    print('#############################')
+    print('Reading dll file ...')
 else:
-	print ('The Specified file \"'+dllname+'\" does not exist!');
-	sys.exit(1);
+    print(f'The Specified file \"{dllPath}\" does not exist!')
+    sys.exit(1)
 
 # Check Architecture
-architecture = 'Unknown';
-p = sub.Popen('dumpbin_tools/dumpbin.exe /headers '+dllname,stdout=sub.PIPE,stderr=sub.PIPE);
-output, errors = p.communicate();
-output = output.decode('utf-8');
+architecture = 'Unknown'
+p = sub.Popen(f'dumpbin_tools\\dumpbin.exe /headers "{dllPath}"', stdout=sub.PIPE, stderr=sub.PIPE)
+output, errors = p.communicate()
+output = output.decode('utf-8')
+
 if 'x86' in output:
-	print ('x86 dll detected ...');
-	architecture = 'x86';
+    print('x86 dll detected ...')
+    architecture = 'x86'
 elif 'x64' in output:
-	print ('x64 dll detected ...');
-	architecture = 'x64';
+    print('x64 dll detected ...')
+    architecture = 'x64'
 else:
-	print ('invalid dll file, exiting ...');
-	
+    print('invalid dll file, exiting ...')
+    sys.exit(1)
+
 # Get Export List
-p = sub.Popen('dumpbin_tools/dumpbin.exe /exports '+dllname,stdout=sub.PIPE,stderr=sub.PIPE);
-output, errors = p.communicate();
-output = output.decode('utf-8');
-lines = output.split('\r\n');
-start = 0; idx1 = 0; idx2 = 0; idx3 = 0; idx4 = 0; LoadNames = []; WrapFcn = []; DefItem = [];
+p = sub.Popen(f'dumpbin_tools\\dumpbin.exe /exports "{dllPath}"', stdout=sub.PIPE, stderr=sub.PIPE)
+output, errors = p.communicate()
+output = output.decode('utf-8')
+lines = output.split('\r\n')
+start = 0
+idx1 = 0
+idx2 = 0
+idx3 = 0
+idx4 = 0
+LoadNames = []
+WrapFcn = []
+DefItem = []
 for line in lines:
-	if 'ordinal' in line and 'hint' in line and 'RVA' in line and 'name' in line:
-		start = 1;
-		idx1 = line.find('ordinal');
-		idx2 = line.find('hint');
-		idx3 = line.find('RVA');
-		idx4 = line.find('name');
-		continue;
-	if start is 1:
-		start = 2;
-		continue;
-	if start is 2:
-		if len(line) is 0:
-			break;
-		splt = re.compile("\s*").split(line.strip());
+    if 'ordinal' in line and 'hint' in line and 'RVA' in line and 'name' in line:
+        start = 1
+        idx1 = line.find('ordinal')
+        idx2 = line.find('hint')
+        idx3 = line.find('RVA')
+        idx4 = line.find('name')
+        continue
+    if start is 1:
+        start = 2
+        continue
+    if start is 2:
+        if len(line) is 0:
+            break
+        split = re.compile(r"(\s+)").split(line.strip())
 
-		if len(splt) > 3 and splt[3] == "(forwarded":
-			splt = splt[:-3]
+        if len(split) > 3 and split[6] == "(forwarded":
+            split = split[:-6]
 
-		ordinal = splt[0];
-		fcnname = splt[-1];
-		if fcnname == '[NONAME]':
-			LoadNames.append( '(LPCSTR)'+ordinal );
-			WrapFcn.append('ExportByOrdinal'+ordinal);
-			DefItem.append('ExportByOrdinal'+ordinal+' @'+ordinal+' NONAME');
-		else:
-			LoadNames.append( '\"'+fcnname+'\"' );
-			WrapFcn.append(fcnname+'_wrapper');
-			DefItem.append(fcnname+'='+fcnname+'_wrapper'+' @'+ordinal);
-			
+        ordinal = split[0]
+        funcName = split[-1]
+
+        if funcName == '[NONAME]':
+            LoadNames.append(f'(LPCSTR){ordinal}')
+            WrapFcn.append(f'ExportByOrdinal{ordinal}')
+            DefItem.append(f'ExportByOrdinal{ordinal} @{ordinal} NONAME')
+        else:
+            LoadNames.append(f'\"{funcName}\"')
+            WrapFcn.append(f'{funcName}_proxy')
+            DefItem.append(f'{funcName}={funcName}_proxy @{ordinal}')
+
+# Variables
+proxyFuncName = "MFSX"
+
+dllProxyName = dllName.replace('.dll', '')
+dllProxyFolder = f"{dllProxyName}\\{dllProxyName}"
+
+templateFolder = f'Visual Studio Project Template\\{architecture}\\'
+templateProjectName = "MyName"
+templateProjectFolder = f'{templateFolder}\\{templateProjectName}'
+templateProjectFiles = (f'{templateFolder}\\{templateProjectName}.sln',
+                        f'{templateProjectFolder}\\{templateProjectName}.vcxproj',
+                        f'{templateProjectFolder}\\{templateProjectName}.vcxproj.filters')
+
+dllProxyProjectFiles = (f'{dllProxyName}\\{dllProxyName}.sln',
+                        f'{dllProxyFolder}\\{dllProxyName}.vcxproj',
+                        f'{dllProxyFolder}\\{dllProxyName}.vcxproj.filters')
+
+dllProxyFiles = [f'{dllProxyName}.cpp', f'{dllProxyName}.def']
+
+if architecture == 'x64':
+    dllProxyFiles.append(f'{dllProxyName}_asm.asm')
+
 # Generate Def File
-print ('Generating .def File');
-f = open(dllname.replace('.dll','.def'),'w');
-f.write('LIBRARY '+dllname+'\n');
-f.write('EXPORTS\n');
-for item in DefItem:
-	f.write('\t'+item+'\n');
-f.close();
+print('Generating .def file')
+
+with open(dllProxyFiles[1], 'w') as f:
+    f.write(f'LIBRARY {dllName}\n')
+    f.write('EXPORTS\n')
+    for item in DefItem:
+        f.write(f'{item}\n')
 
 # Generate CPP File
-print ('Generating .cpp file');
+print('Generating .cpp file')
 
-f = open(dllname.replace('.dll','.cpp'),'w');
-f.write('#include <windows.h>\n#include <stdio.h>\n');
-f.write('HINSTANCE mHinst = 0, mHinstDLL = 0;\n');
+with open(dllProxyFiles[0], 'w') as f:
+    f.write('#include <windows.h>\n#include <tchar.h>\n\n')
+    f.write('HINSTANCE mHinstDLL = 0;\n')
 
-if architecture == 'x64':  # For X64
-	f.write('extern \"C\" ');
+    if architecture == 'x64':  # For X64
+        f.write('extern \"C\" ')
 
-f.write('UINT_PTR mProcs['+str(len(LoadNames))+'] = {0};\n\n');
-f.write('LPCSTR mImportNames[] = {');
-for idx, val in enumerate(LoadNames):
-	if idx is not 0:
-		f.write(', ');
-	f.write(val);
-f.write('};\n');
-f.write('BOOL WINAPI DllMain( HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved ) {\n');
-f.write('\tmHinst = hinstDLL;\n');
-f.write('\tif ( fdwReason == DLL_PROCESS_ATTACH ) {\n');
-# f.write('\t\tchar sysdir[255], path[255];\n');
-# f.write('\t\tGetSystemDirectory( sysdir, 254 );\n');
-# f.write('\t\tsprintf( path, \"%s\\\\ori_'+dllname+'\", sysdir );\n');
-f.write('\t\tmHinstDLL = LoadLibrary( \"ori_'+dllname+'\" );\n');
-f.write('\t\tif ( !mHinstDLL )\n');
-f.write('\t\t\treturn ( FALSE );\n');
-f.write('\t\tfor ( int i = 0; i < '+str(len(LoadNames))+'; i++ )\n');
-f.write('\t\t\tmProcs[ i ] = (UINT_PTR)GetProcAddress( mHinstDLL, mImportNames[ i ] );\n');
-f.write('\t} else if ( fdwReason == DLL_PROCESS_DETACH ) {\n');
-f.write('\t\tFreeLibrary( mHinstDLL );\n');
-f.write('\t}\n');
-f.write('\treturn ( TRUE );\n');
-f.write('}\n\n');
+    f.write(f'UINT_PTR mProcs[{str(len(LoadNames))}] = {{ 0 }};\n\n')
+    f.write('LPCSTR mImportNames[] = { ')
+    for idx, val in enumerate(LoadNames):
+        if idx is not 0:
+            f.write(', ')
+        f.write(val)
+    f.write(' };\n\n')
+    f.write(f'void {proxyFuncName}();\n\n')
+    f.write('BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {\n')
+    f.write('\tif (fdwReason == DLL_PROCESS_ATTACH) {\n')
+    f.write('\t\tTCHAR szPath[MAX_PATH];\n\n')
+    f.write('\t\tif (!GetSystemDirectory(szPath, MAX_PATH))\n')
+    f.write('\t\t\treturn FALSE;\n\n')
+    f.write(f'\t\t_tcscat_s(szPath, _T(\"\\\\{dllName}\"));\n\n')
+    f.write('\t\tmHinstDLL = LoadLibrary(szPath);\n\n')
+    f.write('\t\tif (!mHinstDLL)\n')
+    f.write('\t\t\treturn FALSE;\n\n')
+    f.write(f'\t\tfor (int i = 0; i < {str(len(LoadNames))}; i++)\n')
+    f.write('\t\t\tmProcs[i] = (UINT_PTR)GetProcAddress(mHinstDLL, mImportNames[i]);\n\n')
+    f.write(f'\t\tCreateThread(0, 0, (LPTHREAD_START_ROUTINE){proxyFuncName}, 0, 0, NULL);\n')
+    f.write('\t}\n\telse if (fdwReason == DLL_PROCESS_DETACH) {\n')
+    f.write('\t\tFreeLibrary(mHinstDLL);\n')
+    f.write('\t}\n\n')
+    f.write('\treturn TRUE;\n')
+    f.write('}\n\n')
+    f.write(f'void {proxyFuncName}() {{\n')
+    f.write('\tMessageBox(NULL, _T("Hello World!"), _T("Hi"), NULL);\n')
+    f.write('}\n\n')
 
-if architecture == 'x64':
-	for item in WrapFcn:
-		f.write('extern \"C\" void '+item+'();\n');
-else:
-	for idx, item in enumerate(WrapFcn):
-		f.write('extern \"C\" __declspec(naked) void __stdcall '+item+'(){__asm{jmp mProcs['+str(idx)+'*4]}}\n');
-f.close();
-
+    if architecture == 'x64':
+        for item in WrapFcn:
+            f.write(f'extern \"C\" void {item}();\n')
+    else:
+        for idx, item in enumerate(WrapFcn):
+            f.write(
+                f'extern \"C\" __declspec(naked) void __stdcall {item}(){{ __asm {{ jmp mProcs[{str(idx)} * 4] }} }}\n')
 
 # Generate ASM File
-print ('Generating .asm file');
+print('Generating .asm file')
 if architecture == 'x86':
-	print ('x86 wrapper will use inline asm.');
+    print('x86 wrapper will use inline asm.')
 else:
-	f = open(dllname.replace('.dll','_asm.asm'),'w');
-	f.write('.code\nextern mProcs:QWORD\n');
-	for idx, item in enumerate(WrapFcn):
-		f.write(item+' proc\n\tjmp mProcs['+str(idx)+'*8]\n'+item+' endp\n');
-	f.write('end\n');
-	f.close();
-	
+    with open(dllProxyFiles[2], 'w') as f:
+        f.write('.code\nextern mProcs:QWORD\n')
+        for idx, item in enumerate(WrapFcn):
+            f.write(f'{item} proc\n\tjmp mProcs[{str(idx)}*8]\n{item} endp\n')
+        f.write('end\n')
+
 # Generate MS Visual Studio Project Files.
+if os.path.exists(dllProxyName):
+    shutil.rmtree(dllProxyName)
+time.sleep(2)
+os.mkdir(dllProxyName)
+os.mkdir(dllProxyFolder)
 
-if os.path.exists(dllname.replace('.dll','')):
-	shutil.rmtree(dllname.replace('.dll',''));
-time.sleep(2);
-os.mkdir(dllname.replace('.dll',''));
-os.mkdir(dllname.replace('.dll','')+'\\'+dllname.replace('.dll',''));
+# Generate Project Files
+i = 0
+for file in templateProjectFiles:
+    with open(file, 'r') as templateFile:
+        with open(dllProxyProjectFiles[i], 'w') as projectFile:
+            for line in templateFile:
+                line = line.replace('MyName', dllProxyName)
+                line = line.replace('MYNAME', dllProxyName.upper())
+                projectFile.write(line)
+            i = i + 1
 
-# Generate x64
+shutil.move(dllProxyFiles[0], dllProxyFolder)
+shutil.move(dllProxyFiles[1], dllProxyFolder)
 if architecture == 'x64':
-	sln = open('Visual Studio Project Template\\x64\\MyName.sln','r');
-	targetsln = open(dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'.sln','w');
-	for line in sln:
-		line = line.replace('MyName',dllname.replace('.dll',''));
-		line = line.replace('MYNAME',dllname.replace('.dll','').upper());
-		targetsln.write(line);
-	targetsln.close();
-	sln.close();
-	
-	prj = open('Visual Studio Project Template\\x64\\MyName\\MyName.vcxproj','r');
-	targetprj = open(dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'.vcxproj','w');
-	for line in prj:
-		line = line.replace('MyName',dllname.replace('.dll',''));
-		line = line.replace('MYNAME',dllname.replace('.dll','').upper());
-		targetprj.write(line);
-	targetprj.close();
-	prj.close();
-	
-	prj = open('Visual Studio Project Template\\x64\\MyName\\MyName.vcxproj.filters','r');
-	targetprj = open(dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'.vcxproj.filters','w');
-	for line in prj:
-		line = line.replace('MyName',dllname.replace('.dll',''));
-		line = line.replace('MYNAME',dllname.replace('.dll','').upper());
-		targetprj.write(line);
-	targetprj.close();
-	prj.close();
-	
-	prj = open('Visual Studio Project Template\\x64\\MyName\\MyName.vcxproj.user','r');
-	targetprj = open(dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'.vcxproj.user','w');
-	for line in prj:
-		line = line.replace('MyName',dllname.replace('.dll',''));
-		line = line.replace('MYNAME',dllname.replace('.dll','').upper());
-		targetprj.write(line);
-	targetprj.close();
-	prj.close();
-	
-	shutil.copy('Visual Studio Project Template\\x64\\MyName.suo',dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'.suo');
-	
-	shutil.move(dllname.replace('.dll','.cpp'),dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'\\');
-	shutil.move(dllname.replace('.dll','.def'),dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'\\');
-	shutil.move(dllname.replace('.dll','_asm.asm'),dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'\\');
-
-else:
-	sln = open('Visual Studio Project Template\\x86\\MyName.sln','r');
-	targetsln = open(dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'.sln','w');
-	for line in sln:
-		line = line.replace('MyName',dllname.replace('.dll',''));
-		line = line.replace('MYNAME',dllname.replace('.dll','').upper());
-		targetsln.write(line);
-	targetsln.close();
-	sln.close();
-	
-	prj = open('Visual Studio Project Template\\x86\\MyName\\MyName.vcxproj','r');
-	targetprj = open(dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'.vcxproj','w');
-	for line in prj:
-		line = line.replace('MyName',dllname.replace('.dll',''));
-		line = line.replace('MYNAME',dllname.replace('.dll','').upper());
-		targetprj.write(line);
-	targetprj.close();
-	prj.close();
-	
-	prj = open('Visual Studio Project Template\\x86\\MyName\\MyName.vcxproj.filters','r');
-	targetprj = open(dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'.vcxproj.filters','w');
-	for line in prj:
-		line = line.replace('MyName',dllname.replace('.dll',''));
-		line = line.replace('MYNAME',dllname.replace('.dll','').upper());
-		targetprj.write(line);
-	targetprj.close();
-	prj.close();
-	
-	prj = open('Visual Studio Project Template\\x86\\MyName\\MyName.vcxproj.user','r');
-	targetprj = open(dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'.vcxproj.user','w');
-	for line in prj:
-		line = line.replace('MyName',dllname.replace('.dll',''));
-		line = line.replace('MYNAME',dllname.replace('.dll','').upper());
-		targetprj.write(line);
-	targetprj.close();
-	prj.close();
-	
-	shutil.copy('Visual Studio Project Template\\x86\\MyName.suo',dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'.suo');
-	
-	shutil.move(dllname.replace('.dll','.cpp'),dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'\\');
-	shutil.move(dllname.replace('.dll','.def'),dllname.replace('.dll','')+'\\'+dllname.replace('.dll','')+'\\');
+    shutil.move(dllProxyFiles[2], dllProxyFolder)
