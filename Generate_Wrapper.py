@@ -125,39 +125,39 @@ with open(dllProxyFiles[1], 'w') as f:
 print('Generating .cpp file')
 
 with open(dllProxyFiles[0], 'w') as f:
-    f.write('#include <windows.h>\n#include <tchar.h>\n\n')
+    f.write('#include <windows.h>\n\n')
     f.write('HINSTANCE mHinstDLL = 0;\n')
 
     if architecture == 'x64':  # For X64
         f.write('extern \"C\" ')
 
-    f.write(f'UINT_PTR mProcs[{str(len(LoadNames))}] = {{ 0 }};\n\n')
-    f.write('LPCSTR mImportNames[] = { ')
+    f.write(f'uintptr_t mProcs[{str(len(LoadNames))}] = {{ 0 }};\n\n')
+    f.write('const char* mImportNames[] = { ')
     for idx, val in enumerate(LoadNames):
         if idx is not 0:
             f.write(', ')
         f.write(val)
     f.write(' };\n\n')
     f.write(f'void {proxyFuncName}();\n\n')
-    f.write('BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {\n')
+    f.write('BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {\n')
     f.write('\tif (fdwReason == DLL_PROCESS_ATTACH) {\n')
-    f.write('\t\tTCHAR szPath[MAX_PATH];\n\n')
+    f.write('\t\tchar szPath[MAX_PATH];\n\n')
     f.write('\t\tif (!GetSystemDirectory(szPath, MAX_PATH))\n')
-    f.write('\t\t\treturn FALSE;\n\n')
-    f.write(f'\t\t_tcscat_s(szPath, _T(\"\\\\{dllName}\"));\n\n')
+    f.write('\t\t\treturn false;\n\n')
+    f.write(f'\t\tstrcat_s(szPath, \"\\\\{dllName}\");\n\n')
     f.write('\t\tmHinstDLL = LoadLibrary(szPath);\n\n')
     f.write('\t\tif (!mHinstDLL)\n')
-    f.write('\t\t\treturn FALSE;\n\n')
+    f.write('\t\t\treturn false;\n\n')
     f.write(f'\t\tfor (int i = 0; i < {str(len(LoadNames))}; i++)\n')
-    f.write('\t\t\tmProcs[i] = (UINT_PTR)GetProcAddress(mHinstDLL, mImportNames[i]);\n\n')
-    f.write(f'\t\tCreateThread(0, 0, (LPTHREAD_START_ROUTINE){proxyFuncName}, 0, 0, NULL);\n')
+    f.write('\t\t\tmProcs[i] = reinterpret_cast<uintptr_t>(GetProcAddress(mHinstDLL, mImportNames[i]));\n\n')
+    f.write(f'\t\tCreateThread(nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>({proxyFuncName}), nullptr, 0, nullptr);\n')
     f.write('\t}\n\telse if (fdwReason == DLL_PROCESS_DETACH) {\n')
     f.write('\t\tFreeLibrary(mHinstDLL);\n')
     f.write('\t}\n\n')
-    f.write('\treturn TRUE;\n')
+    f.write('\treturn true;\n')
     f.write('}\n\n')
     f.write(f'void {proxyFuncName}() {{\n')
-    f.write('\tMessageBox(NULL, _T("Hello World!"), _T("Hi"), NULL);\n')
+    f.write('\tMessageBox(nullptr, "Hello World!", "Hi", 0);\n')
     f.write('}\n\n')
 
     if architecture == 'x64':
