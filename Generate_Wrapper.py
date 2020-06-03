@@ -126,7 +126,7 @@ print('Generating .cpp file')
 
 with open(dllProxyFiles[0], 'w') as f:
     f.write('#include <windows.h>\n\n')
-    f.write('HINSTANCE mHinstDLL = 0;\n')
+    f.write('HINSTANCE mHinstDLL = nullptr;\n')
 
     if architecture == 'x64':  # For X64
         f.write('extern \"C\" ')
