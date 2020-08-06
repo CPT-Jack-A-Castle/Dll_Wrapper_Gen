@@ -67,11 +67,11 @@ for line in lines:
         idx3 = line.find('RVA')
         idx4 = line.find('name')
         continue
-    if start is 1:
+    if start == 1:
         start = 2
         continue
-    if start is 2:
-        if len(line) is 0:
+    if start == 2:
+        if len(line) == 0:
             break
         split = re.compile(r"(\s+)").split(line.strip())
 
@@ -96,7 +96,7 @@ proxyFuncName = "MFSX"
 dllProxyName = dllName.replace('.dll', '')
 dllProxyFolder = f"{dllProxyName}\\{dllProxyName}"
 
-templateFolder = f'Visual Studio Project Template\\{architecture}\\'
+templateFolder = f'Visual Studio Project Template\\'
 templateProjectName = "MyName"
 templateProjectFolder = f'{templateFolder}\\{templateProjectName}'
 templateProjectFiles = (f'{templateFolder}\\{templateProjectName}.sln',
@@ -107,10 +107,7 @@ dllProxyProjectFiles = (f'{dllProxyName}\\{dllProxyName}.sln',
                         f'{dllProxyFolder}\\{dllProxyName}.vcxproj',
                         f'{dllProxyFolder}\\{dllProxyName}.vcxproj.filters')
 
-dllProxyFiles = [f'{dllProxyName}.cpp', f'{dllProxyName}.def']
-
-if architecture == 'x64':
-    dllProxyFiles.append(f'{dllProxyName}_asm.asm')
+dllProxyFiles = [f'{dllProxyName}.cpp', f'{dllProxyName}.def', f'{dllProxyName}_asm.asm']
 
 # Generate Def File
 print('Generating .def file')
@@ -127,14 +124,12 @@ print('Generating .cpp file')
 with open(dllProxyFiles[0], 'w') as f:
     f.write('#include <windows.h>\n\n')
     f.write('HINSTANCE mHinstDLL = nullptr;\n')
-
-    if architecture == 'x64':  # For X64
-        f.write('extern \"C\" ')
+    f.write('#ifdef _WIN64\nextern \"C\"\n#endif\n')
 
     f.write(f'uintptr_t mProcs[{str(len(LoadNames))}] = {{ 0 }};\n\n')
     f.write('const char* mImportNames[] = { ')
     for idx, val in enumerate(LoadNames):
-        if idx is not 0:
+        if idx != 0:
             f.write(', ')
         f.write(val)
     f.write(' };\n\n')
@@ -160,24 +155,22 @@ with open(dllProxyFiles[0], 'w') as f:
     f.write('\tMessageBox(nullptr, "Hello World!", "Hi", 0);\n')
     f.write('}\n\n')
 
-    if architecture == 'x64':
-        for item in WrapFcn:
-            f.write(f'extern \"C\" void {item}();\n')
-    else:
-        for idx, item in enumerate(WrapFcn):
-            f.write(
-                f'extern \"C\" __declspec(naked) void __stdcall {item}(){{ __asm {{ jmp mProcs[{str(idx)} * 4] }} }}\n')
+    f.write('extern \"C\" {\n')
+    f.write('#ifdef _WIN64\n')
+    for item in WrapFcn:
+        f.write(f'void {item}();\n')
+    f.write('#else\n')
+    for idx, item in enumerate(WrapFcn):
+        f.write(f'__declspec(naked) void __stdcall {item}(){{ __asm {{ jmp mProcs[{str(idx)} * 4] }} }}\n')
+    f.write('#endif\n}')
 
 # Generate ASM File
 print('Generating .asm file')
-if architecture == 'x86':
-    print('x86 wrapper will use inline asm.')
-else:
-    with open(dllProxyFiles[2], 'w') as f:
-        f.write('.code\nextern mProcs:QWORD\n')
-        for idx, item in enumerate(WrapFcn):
-            f.write(f'{item} proc\n\tjmp mProcs[{str(idx)}*8]\n{item} endp\n')
-        f.write('end\n')
+with open(dllProxyFiles[2], 'w') as f:
+    f.write('.code\nextern mProcs:QWORD\n')
+    for idx, item in enumerate(WrapFcn):
+        f.write(f'{item} proc\n\tjmp mProcs[{str(idx)}*8]\n{item} endp\n')
+    f.write('end\n')
 
 # Generate MS Visual Studio Project Files.
 if os.path.exists(dllProxyName):
@@ -199,5 +192,4 @@ for file in templateProjectFiles:
 
 shutil.move(dllProxyFiles[0], dllProxyFolder)
 shutil.move(dllProxyFiles[1], dllProxyFolder)
-if architecture == 'x64':
-    shutil.move(dllProxyFiles[2], dllProxyFolder)
+shutil.move(dllProxyFiles[2], dllProxyFolder)
