@@ -31,17 +31,14 @@ else:
     sys.exit(1)
 
 # Check Architecture
-architecture = 'Unknown'
 p = sub.Popen(f'dumpbin_tools\\dumpbin.exe /headers "{dllPath}"', stdout=sub.PIPE, stderr=sub.PIPE)
 output, errors = p.communicate()
 output = output.decode('utf-8')
 
 if 'x86' in output:
     print('x86 dll detected ...')
-    architecture = 'x86'
 elif 'x64' in output:
     print('x64 dll detected ...')
-    architecture = 'x64'
 else:
     print('invalid dll file, exiting ...')
     sys.exit(1)
@@ -73,9 +70,9 @@ for line in lines:
     if start == 2:
         if len(line) == 0:
             break
-        split = re.compile(r"(\s+)").split(line.strip())
+        split = re.compile(r'(\s+)').split(line.strip())
 
-        if len(split) > 3 and split[6] == "(forwarded":
+        if len(split) > 3 and split[6] == '(forwarde':
             split = split[:-6]
 
         ordinal = split[0]
@@ -91,13 +88,13 @@ for line in lines:
             DefItem.append(f'{funcName}={funcName}_proxy @{ordinal}')
 
 # Variables
-proxyFuncName = "MFSX"
+proxyFuncName = 'MFSX'
 
 dllProxyName = dllName.replace('.dll', '')
-dllProxyFolder = f"{dllProxyName}\\{dllProxyName}"
+dllProxyFolder = f'{dllProxyName}\\{dllProxyName}'
 
 templateFolder = f'Visual Studio Project Template\\'
-templateProjectName = "MyName"
+templateProjectName = 'MyName'
 templateProjectFolder = f'{templateFolder}\\{templateProjectName}'
 templateProjectFiles = (f'{templateFolder}\\{templateProjectName}.sln',
                         f'{templateProjectFolder}\\{templateProjectName}.vcxproj',
@@ -122,7 +119,7 @@ with open(dllProxyFiles[1], 'w') as f:
 print('Generating .cpp file')
 
 with open(dllProxyFiles[0], 'w') as f:
-    f.write('#include <windows.h>\n\n')
+    f.write('#include <Windows.h>\n\n')
     f.write('HINSTANCE mHinstDLL = nullptr;\n')
     f.write('#ifdef _WIN64\nextern \"C\"\n#endif\n')
 
@@ -145,7 +142,8 @@ with open(dllProxyFiles[0], 'w') as f:
     f.write('\t\t\treturn false;\n\n')
     f.write(f'\t\tfor (int i = 0; i < {str(len(LoadNames))}; i++)\n')
     f.write('\t\t\tmProcs[i] = reinterpret_cast<uintptr_t>(GetProcAddress(mHinstDLL, mImportNames[i]));\n\n')
-    f.write(f'\t\tCreateThread(nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>({proxyFuncName}), nullptr, 0, nullptr);\n')
+    f.write(f'\t\tCreateThread(nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>({proxyFuncName}),'
+            f' nullptr, 0, nullptr);\n')
     f.write('\t}\n\telse if (fdwReason == DLL_PROCESS_DETACH) {\n')
     f.write('\t\tFreeLibrary(mHinstDLL);\n')
     f.write('\t}\n\n')
