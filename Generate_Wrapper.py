@@ -72,7 +72,7 @@ for line in lines:
             break
         split = re.compile(r'(\s+)').split(line.strip())
 
-        if len(split) > 3 and split[6] == '(forwarde':
+        if len(split) > 3 and split[6] == '(forwarded':
             split = split[:-6]
 
         ordinal = split[0]
